@@ -12,12 +12,8 @@ import pyarrow.parquet as pq
 from usearch.index import Index, Matches, Key
 import stringzilla as sz
 
-from usearch_molecules.to_fingerprint import (
-    smiles_to_maccs_ecfp4_fcfp4,
-    FingerprintShape,
-    shape_maccs,
-    shape_mixed,
-)
+#from usearch_molecules.to_fingerprint import (
+from to_fingerprint import (smiles_to_maccs_ecfp4_fcfp4, FingerprintShape, shape_maccs, shape_mixed,)
 
 SEED = 42  # For reproducibility
 SHARD_SIZE = 1_000_000  # This would result in files between 150 and 300 MB
@@ -33,9 +29,7 @@ class FingerprintedEntry:
     key: Optional[int] = None
 
     @staticmethod
-    def from_table_row(
-        table: pa.Table, row: int, shape: FingerprintShape
-    ) -> FingerprintedEntry:
+    def from_table_row(table: pa.Table, row: int, shape: FingerprintShape) -> FingerprintedEntry:
         fingerprint = np.zeros(shape.nbytes, dtype=np.uint8)
         progress = 0
         if shape.include_maccs:
@@ -52,13 +46,7 @@ class FingerprintedEntry:
         return FingerprintedEntry(smiles=table["smiles"][row], fingerprint=fingerprint)
 
     @staticmethod
-    def from_parts(
-        smiles: str,
-        maccs: np.ndarray,
-        ecfp4: np.ndarray,
-        fcfp4: np.ndarray,
-        shape: FingerprintShape,
-    ) -> FingerprintedEntry:
+    def from_parts(smiles: str, maccs: np.ndarray, ecfp4: np.ndarray, fcfp4: np.ndarray, shape: FingerprintShape,) -> FingerprintedEntry:
         fingerprint = np.zeros(shape.nbytes, dtype=np.uint8)
         progress = 0
         if shape.include_maccs:
@@ -138,11 +126,7 @@ class FingerprintedDataset:
     index: Optional[Index] = None
 
     @staticmethod
-    def open(
-        dir: os.PathLike,
-        shape: Optional[FingerprintShape] = None,
-        max_shards: Optional[int] = None,
-    ) -> FingerprintedDataset:
+    def open(dir: os.PathLike, shape: Optional[FingerprintShape] = None, max_shards: Optional[int] = None,) -> FingerprintedDataset:
         """Gather a list of files forming the dataset."""
 
         if dir is None:
@@ -180,17 +164,14 @@ class FingerprintedDataset:
 
         return FingerprintedDataset(dir=dir, shards=shards, shape=shape, index=index)
 
+
     def shard_containing(self, key: int) -> FingerprintedShard:
         for shard in self.shards:
             if shard.first_key <= key and key <= (shard.first_key + SHARD_SIZE):
                 return shard
 
-    def head(
-        self,
-        max_rows: int,
-        shape: Optional[FingerprintShape] = None,
-        shuffle: bool = False,
-    ) -> Tuple[List[str], List[int], np.ndarray]:
+
+    def head(self, max_rows: int, shape: Optional[FingerprintShape] = None, shuffle: bool = False,) -> Tuple[List[str], List[int], np.ndarray]:
         """Load the first part of the dataset. Mostly used for preview and testing."""
 
         if self.dir is None:
@@ -229,12 +210,8 @@ class FingerprintedDataset:
             fingers = fingers[permutation]
         return smiles, keys, fingers
 
-    def search(
-        self,
-        smiles: str,
-        count: int = 10,
-        log: bool = False,
-    ) -> List[Tuple[int, str, float]]:
+
+    def search(self, smiles: str, count: int = 10, log: bool = False,) -> List[Tuple[int, str, float]]:
         """Search for similar molecules in the whole dataset."""
 
         fingers: tuple = smiles_to_maccs_ecfp4_fcfp4(smiles)

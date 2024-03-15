@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 import os
 from dataclasses import dataclass
@@ -8,10 +9,38 @@ import numpy as np
 
 try:
     from rdkit import Chem
-    from rdkit.Chem import AllChem, MACCSkeys
-    from jpype import isJVMStarted, startJVM, getDefaultJVMPath, JPackage
+    from rdkit.Chem import AllChem, MACCSkeys, rdFingerprintGenerator
 except ImportError:
     print("Can't fingerprint molecules without RDKit and JPype")
+
+
+
+# RDKit fingerprints
+
+_fpgen = rdFingerprintGenerator.GetRDKitFPGenerator(fpSize=16, countSimulation=False)
+#smi = "CC(C)(C)c1ccc2occ(CC(=O)Nc3ccccc3F)c2c1"
+#print(fpgen.GetCountFingerprintAsNumPy(Chem.MolFromSmiles(smi)))
+
+
+def molecule_to_rdkit(x):
+    global _fpgen
+    return _fpgen.GetCountFingerprintAsNumPy(x)
+
+
+def smiles_to_rdkit(smiles: str,) -> np.ndarray:
+    """Uses RDKit to compute RDKit Count representation."""
+
+    molecule = Chem.MolFromSmiles(smiles)
+    return molecule_to_rdkit(molecule)
+    
+    """
+    bitset = np.zeros(16, dtype=np.uint32)
+    bitset = molecule_to_rdkit(molecule)
+    bitset = np.packbits(bitset)
+    return (bitset,)
+    """
+
+
 
 
 def molecule_to_maccs(x):
@@ -26,9 +55,8 @@ def molecule_to_fcfp4(x):
     return AllChem.GetMorganFingerprintAsBitVect(x, 2, nBits=2048, useFeatures=True)
 
 
-def smiles_to_maccs_ecfp4_fcfp4(
-    smiles: str,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    
+def smiles_to_maccs_ecfp4_fcfp4(smiles: str,) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Uses RDKit to simultaneously compute MACCS, ECFP4, and FCFP4 representations."""
 
     molecule = Chem.MolFromSmiles(smiles)
@@ -39,39 +67,6 @@ def smiles_to_maccs_ecfp4_fcfp4(
     )
 
 
-_cdk = None
-_cdk_smiles_parser = None
-_cdk_fingerprinter = None
-
-
-def smiles_to_pubchem(smiles: str) -> Tuple[np.ndarray]:
-    """Uses Chemistry Development Kit to compute PubChem representations."""
-    global _cdk
-    global _cdk_smiles_parser
-    global _cdk_fingerprinter
-
-    if not isJVMStarted():
-        cdk_path = os.path.join(os.getcwd(), "cdk-2.2.jar")
-        startJVM(getDefaultJVMPath(), "-Djava.class.path=%s" % cdk_path)
-        _cdk = JPackage("org").openscience.cdk
-
-    if _cdk_smiles_parser is None:
-        _cdk_smiles_parser = _cdk.smiles.SmilesParser(
-            _cdk.DefaultChemObjectBuilder.getInstance()
-        )
-
-    if _cdk_fingerprinter is None:
-        _cdk_fingerprinter = _cdk.fingerprint.PubchemFingerprinter(
-            _cdk.silent.SilentChemObjectBuilder.getInstance()
-        )
-
-    molecule = _cdk_smiles_parser.parseSmiles(smiles)
-    cdk_fingerprint = _cdk_fingerprinter.getBitFingerprint(molecule)
-    cdk_set_bits = list(cdk_fingerprint.getSetbits())
-    bitset = np.zeros(881, dtype=np.uint8)
-    bitset[cdk_set_bits] = 1
-    bitset = np.packbits(bitset)
-    return (bitset,)
 
 
 @dataclass
@@ -99,12 +94,9 @@ class FingerprintShape:
     @property
     def index_name(self) -> str:
         parts = ["index"]
-        if self.include_maccs:
-            parts.append("maccs")
-        if self.include_ecfp4:
-            parts.append("ecfp4")
-        if self.include_fcfp4:
-            parts.append("fcfp4")
+        if self.include_maccs: parts.append("maccs")
+        if self.include_ecfp4: parts.append("ecfp4")
+        if self.include_fcfp4: parts.append("fcfp4")
         return "-".join(parts) + ".usearch"
 
 
@@ -118,3 +110,5 @@ shape_mixed = FingerprintShape(
     include_ecfp4=True,
     nbytes_padding=3,
 )
+
+
