@@ -9,35 +9,13 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from usearch.index import Index, CompiledMetric, MetricKind, MetricSignature, ScalarKind
-from usearch.eval import self_recall, SearchStats
+#from usearch.index import Index #, CompiledMetric, MetricKind, MetricSignature, ScalarKind
+#from usearch.eval import self_recall, SearchStats
 
-from to_fingerprint import (smiles_to_rdkit, smiles_to_maccs_ecfp4_fcfp4) 
-from dataset import (write_table) 
+from to_fingerprint import smiles_to_rdkit
+from dataset import write_table
 
 logger = logging.getLogger(__name__)
-
-
-def augment_with_rdkit_maccs(parquet_path: os.PathLike):
-    meta = pq.read_metadata(parquet_path)
-    column_names: List[str] = meta.schema.names
-    if "maccs" in column_names: return
-    
-    logger.info(f"Starting file {parquet_path}")
-    table: pa.Table = pq.read_table(parquet_path)
-    maccs_list = []
-    for smiles in table["smiles"]:
-        try:
-            fingers = smiles_to_maccs_ecfp4_fcfp4(str(smiles))
-            maccs_list.append(fingers[0].tobytes())
-        except Exception:
-            maccs_list.append(bytes(bytearray(21)))
-
-    maccs_list = pa.array(maccs_list, pa.binary(21))
-    maccs_field = pa.field("maccs", pa.binary(21), nullable=False)
-    table = table.append_column(maccs_field, maccs_list)
-    write_table(table, parquet_path)
-    
     
     
 def augment_with_rdkit(parquet_path: os.PathLike):
@@ -52,7 +30,7 @@ def augment_with_rdkit(parquet_path: os.PathLike):
         try:
             fingers = smiles_to_rdkit(str(smiles))
             fingers = pa.array(fingers, type=pa.uint16())
-            print(type(fingers))
+            #print(type(fingers))
             rdkit_list.append(fingers) 
         except Exception:
             fingers = np.zeros(16, dtype=np.uint16)
@@ -60,7 +38,7 @@ def augment_with_rdkit(parquet_path: os.PathLike):
             rdkit_list.append(fingers)  
             
     rdkit_list = pa.array(rdkit_list, pa.list_(pa.uint16())) 
-    rdkit_field = pa.field("rdkit", pa.list_(pa.uint16())) 
+    rdkit_field = pa.field("rdkit", pa.list_(pa.uint16()), nullable=False) 
     table = table.append_column(rdkit_field, rdkit_list)
     write_table(table, parquet_path)
 

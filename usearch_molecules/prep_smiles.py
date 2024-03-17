@@ -13,8 +13,7 @@ def export_smiles(data):
         smiles_path = str(shard.table_path)
         smiles_path = smiles_path.replace(".parquet", ".smi")
         smiles_path = smiles_path.replace("/parquet/", "/smiles/")
-        if os.path.exists(smiles_path):
-            continue
+        if os.path.exists(smiles_path): continue
 
         with open(smiles_path, "w") as f:
             for line in table["smiles"]:

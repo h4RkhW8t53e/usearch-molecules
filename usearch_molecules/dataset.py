@@ -13,54 +13,12 @@ from usearch.index import Index, Matches, Key
 import stringzilla as sz
 
 #from usearch_molecules.to_fingerprint import (
-from to_fingerprint import (smiles_to_maccs_ecfp4_fcfp4, FingerprintShape, shape_maccs, shape_mixed,)
+from to_fingerprint import smiles_to_rdkit
 
 SEED = 42  # For reproducibility
 SHARD_SIZE = 1_000_000  # This would result in files between 150 and 300 MB
 BATCH_SIZE = 100_000  # A good threshold to split insertions
 
-
-@dataclass
-class FingerprintedEntry:
-    """SMILES string augmented with a potentially hybrid fingerprint of known `FingerprintShape` shape."""
-
-    smiles: str
-    fingerprint: np.ndarray
-    key: Optional[int] = None
-
-    @staticmethod
-    def from_table_row(table: pa.Table, row: int, shape: FingerprintShape) -> FingerprintedEntry:
-        fingerprint = np.zeros(shape.nbytes, dtype=np.uint8)
-        progress = 0
-        if shape.include_maccs:
-            fingerprint[progress : progress + 21] = table["maccs"][row].as_buffer()
-            progress += 21
-        if shape.nbytes_padding:
-            progress += shape.nbytes_padding
-        if shape.include_ecfp4:
-            fingerprint[progress : progress + 256] = table["ecfp4"][row].as_buffer()
-            progress += 256
-        if shape.include_fcfp4:
-            fingerprint[progress : progress + 256] = table["fcfp4"][row].as_buffer()
-            progress += 256
-        return FingerprintedEntry(smiles=table["smiles"][row], fingerprint=fingerprint)
-
-    @staticmethod
-    def from_parts(smiles: str, maccs: np.ndarray, ecfp4: np.ndarray, fcfp4: np.ndarray, shape: FingerprintShape,) -> FingerprintedEntry:
-        fingerprint = np.zeros(shape.nbytes, dtype=np.uint8)
-        progress = 0
-        if shape.include_maccs:
-            fingerprint[progress : progress + 21] = maccs
-            progress += 21
-        if shape.nbytes_padding:
-            progress += shape.nbytes_padding
-        if shape.include_ecfp4:
-            fingerprint[progress : progress + 256] = ecfp4
-            progress += 256
-        if shape.include_fcfp4:
-            fingerprint[progress : progress + 256] = fcfp4
-            progress += 256
-        return FingerprintedEntry(smiles=smiles, fingerprint=fingerprint)
 
 
 def shard_name(dir: str, from_index: int, to_index: int, kind: str):
@@ -105,11 +63,7 @@ class FingerprintedShard:
 
     def load_table(self, columns=None, view=False) -> pa.Table:
         if not self.table_cached:
-            self.table_cached = pq.read_table(
-                self.table_path,
-                memory_map=view,
-                columns=columns,
-            )
+            self.table_cached = pq.read_table(self.table_path, memory_map=view, columns=columns,)
         return self.table_cached
 
     def load_smiles(self) -> sz.Strs:
@@ -122,15 +76,13 @@ class FingerprintedShard:
 class FingerprintedDataset:
     dir: os.PathLike
     shards: List[FingerprintedShard]
-    shape: Optional[FingerprintShape] = None
     index: Optional[Index] = None
 
     @staticmethod
-    def open(dir: os.PathLike, shape: Optional[FingerprintShape] = None, max_shards: Optional[int] = None,) -> FingerprintedDataset:
+    def open(dir: os.PathLike, max_shards: Optional[int] = None,) -> FingerprintedDataset:
         """Gather a list of files forming the dataset."""
 
-        if dir is None:
-            return FingerprintedDataset(dir=None, shards=[], shape=shape)
+        if dir is None: return FingerprintedDataset(dir=None, shards=[])
 
         shards = []
         filenames = sorted(os.listdir(os.path.join(dir, "parquet")))
@@ -138,97 +90,46 @@ class FingerprintedDataset:
             filenames = filenames[:max_shards]
 
         for filename in tqdm(filenames, unit="shard"):
-            if not filename.endswith(".parquet"):
-                continue
+            if not filename.endswith(".parquet"): continue
 
             filename = filename.replace(".parquet", "")
             first_key = int(filename.split("-")[0])
             table_path = os.path.join(dir, "parquet", filename + ".parquet")
             smiles_path = os.path.join(dir, "smiles", filename + ".smi")
 
-            shard = FingerprintedShard(
-                first_key=first_key,
-                name=filename,
-                table_path=table_path,
-                smiles_path=smiles_path,
-            )
+            shard = FingerprintedShard(first_key=first_key, name=filename, table_path=table_path, smiles_path=smiles_path,)
             shards.append(shard)
 
         print(f"Fetched {len(shards)} shards")
 
         index = None
-        if shape:
-            index_path = os.path.join(dir, shape.index_name)
-            if os.path.exists(index_path):
-                index = Index.restore(index_path)
+        index_path = os.path.join(dir, 'index-rdkit.usearch')
+        if os.path.exists(index_path): index = Index.restore(index_path)
 
-        return FingerprintedDataset(dir=dir, shards=shards, shape=shape, index=index)
+        return FingerprintedDataset(dir=dir, shards=shards, index=index)
 
 
     def shard_containing(self, key: int) -> FingerprintedShard:
         for shard in self.shards:
-            if shard.first_key <= key and key <= (shard.first_key + SHARD_SIZE):
-                return shard
-
-
-    def head(self, max_rows: int, shape: Optional[FingerprintShape] = None, shuffle: bool = False,) -> Tuple[List[str], List[int], np.ndarray]:
-        """Load the first part of the dataset. Mostly used for preview and testing."""
-
-        if self.dir is None:
-            return None
-
-        if not shape:
-            shape = self.shape
-        exported_rows = 0
-        smiles = []
-        keys = []
-        fingers = []
-        for shard in self.shards:
-            table = shard.load_table()
-            chunk_size = len(table)
-            for i in range(chunk_size):
-                entry = FingerprintedEntry.from_table_row(table, i, shape)
-                keys.append(exported_rows)
-                smiles.append(entry.smiles)
-                fingers.append(entry.fingerprint)
-                exported_rows += 1
-
-                if exported_rows >= max_rows:
-                    break
-
-            if exported_rows >= max_rows:
-                break
-
-        smiles = np.array(smiles, dtype=object)
-        keys = np.array(keys, dtype=Key)
-        fingers = np.vstack(fingers)
-        if shuffle:
-            permutation = np.arange(len(keys))
-            np.random.shuffle(permutation)
-            smiles = smiles[permutation]
-            keys = keys[permutation]
-            fingers = fingers[permutation]
-        return smiles, keys, fingers
+            if shard.first_key <= key and key <= (shard.first_key + SHARD_SIZE): return shard
 
 
     def search(self, smiles: str, count: int = 10, log: bool = False,) -> List[Tuple[int, str, float]]:
         """Search for similar molecules in the whole dataset."""
 
-        fingers: tuple = smiles_to_maccs_ecfp4_fcfp4(smiles)
-        entry = FingerprintedEntry.from_parts(
-            smiles,
-            fingers[0],
-            fingers[1],
-            fingers[2],
-            self.shape,
-        )
-        results: Matches = self.index.search(entry.fingerprint, count, log=log)
+        fingers = smiles_to_rdkit(smiles)
+        entry_fingerprint = np.array(fingers, dtype=np.float16)
+        
+        results: Matches = self.index.search(entry_fingerprint, count, log=log)
 
         filtered_results = []
         for match in results:
             shard = self.shard_containing(match.key)
             row = int(match.key - shard.first_key)
-            result = str(shard.smiles[row])
+            #result = str(shard.smiles[row])
+            #table = shard.load_table(["smiles"])
+            #result = str(table["smiles"][row])
+            result = str(shard.load_table(["smiles"])["smiles"][row])   
             filtered_results.append((match.key, result, match.distance))
 
         return filtered_results
@@ -244,5 +145,5 @@ class FingerprintedDataset:
 
 
 if __name__ == "__main__":
-    dataset = FingerprintedDataset.open("data/pubchem", shape=shape_maccs)
+    dataset = FingerprintedDataset.open("data/pubchem")
     dataset.search("C")

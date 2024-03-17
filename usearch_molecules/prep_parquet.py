@@ -18,15 +18,18 @@ class RawDataset:
     lines: Strs
     extractor: Callable
 
+
     def count_lines(self) -> int:
         return len(self.lines)
+
+    def cid(self, row_idx: int) -> Optional[str]:
+        return self.extractor(str(self.lines[row_idx]))
 
     def smiles(self, row_idx: int) -> Optional[str]:
         return self.extractor(str(self.lines[row_idx]))
 
     def smiles_slice(self, count_to_skip: int, max_count: int) -> List[Tuple[int, str]]:
         result = []
-
         count_lines = len(self.lines)
         for row_idx in range(count_to_skip, count_lines):
             smiles = self.smiles(row_idx)
@@ -38,7 +41,7 @@ class RawDataset:
         return result
 
 
-def pubchem(dir: os.PathLike) -> RawDataset:
+def pubchem_1(dir: os.PathLike) -> RawDataset:
     """
     gzip -d CID-SMILES.gz
     """
@@ -52,6 +55,35 @@ def pubchem(dir: os.PathLike) -> RawDataset:
         row = row.strip("\n")
         if "," in row:
             row = row.split(",")[-1]
+            return row
+        return None
+
+    return RawDataset(
+        lines=lines,
+        extractor=extractor,
+    )
+    
+
+def pubchem(dir: os.PathLike) -> RawDataset:
+    """
+    gzip -d CID-SMILES.gz
+    """
+    
+    filenames = [
+        "Compound_001000001_001500000",
+        "Compound_000500001_001000000",
+        "Compound_001000001_001500000",
+    ]
+    file = Str(File(os.path.join(dir, "Compound_001000001_001500000.smi"))) 
+    lines = file.splitlines()
+    
+    # Let's shuffle across all the files
+    #lines.shuffle(SEED)
+
+    def extractor(row: str) -> Optional[str]:
+        row = row.strip("\n")
+        if " " in row:
+            row = row.split(" ")[0]
             return row
         return None
 
@@ -80,15 +112,21 @@ def export_parquet_shard(dataset: RawDataset, dir: os.PathLike, shard_index: int
             if os.path.exists(path_out): continue
 
             try:
-                dicts = []
+                dicts, dicts_cid = [], []
                 for _, smiles in rows_and_smiles:
+                    cid = "111111"
                     try:
                         dicts.append({"smiles": smiles})
+                        dicts_cid.append(cid)
                     except Exception:
                         continue
 
                 schema = pa.schema([pa.field("smiles", pa.string(), nullable=False)])
                 table = pa.Table.from_pylist(dicts, schema=schema)
+                
+                dicts_cid = pa.array(dicts_cid, pa.string())
+                schema_cid = pa.field("cid", pa.string(), nullable=False) 
+                table = table.append_column(schema_cid, dicts_cid)
                 write_table(table, path_out)
 
             except KeyboardInterrupt as e:
