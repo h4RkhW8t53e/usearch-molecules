@@ -45,31 +45,20 @@ class FingerprintedShard:
     name: str
 
     table_path: os.PathLike
-    smiles_path: os.PathLike
     table_cached: Optional[pa.Table] = None
-    smiles_caches: Optional[sz.Strs] = None
 
     @property
     def is_complete(self) -> bool:
-        return os.path.exists(self.table_path) and os.path.exists(self.smiles_path)
+        return os.path.exists(self.table_path) 
 
     @property
     def table(self) -> pa.Table:
         return self.load_table()
 
-    @property
-    def smiles(self) -> sz.Strs:
-        return self.load_smiles()
-
     def load_table(self, columns=None, view=False) -> pa.Table:
         if not self.table_cached:
             self.table_cached = pq.read_table(self.table_path, memory_map=view, columns=columns,)
         return self.table_cached
-
-    def load_smiles(self) -> sz.Strs:
-        if not self.smiles_caches:
-            self.smiles_caches = sz.Str(sz.File(self.smiles_path)).splitlines()
-        return self.smiles_caches
 
 
 @dataclass
@@ -95,9 +84,8 @@ class FingerprintedDataset:
             filename = filename.replace(".parquet", "")
             first_key = int(filename.split("-")[0])
             table_path = os.path.join(dir, "parquet", filename + ".parquet")
-            smiles_path = os.path.join(dir, "smiles", filename + ".smi")
 
-            shard = FingerprintedShard(first_key=first_key, name=filename, table_path=table_path, smiles_path=smiles_path,)
+            shard = FingerprintedShard(first_key=first_key, name=filename, table_path=table_path,)
             shards.append(shard)
 
         print(f"Fetched {len(shards)} shards")
@@ -114,7 +102,7 @@ class FingerprintedDataset:
             if shard.first_key <= key and key <= (shard.first_key + SHARD_SIZE): return shard
 
 
-    def search(self, smiles: str, count: int = 10, log: bool = False,) -> List[Tuple[int, str, float]]:
+    def search(self, smiles: str, count: int = 10, log: bool = False,) -> List[Tuple[int, str, str, float]]:
         """Search for similar molecules in the whole dataset."""
 
         fingers = smiles_to_rdkit(smiles)
@@ -127,21 +115,23 @@ class FingerprintedDataset:
             shard = self.shard_containing(match.key)
             row = int(match.key - shard.first_key)
             #result = str(shard.smiles[row])
-            #table = shard.load_table(["smiles"])
-            #result = str(table["smiles"][row])
-            result = str(shard.load_table(["smiles"])["smiles"][row])   
-            filtered_results.append((match.key, result, match.distance))
+            #table: pa.Table =  shard.load_table(columns=["smiles","cid"], view=True)
+            result = str(shard.table["smiles"][row])
+            result_cid = str(shard.table["cid"][row])
+            filtered_results.append((match.key, result, match.distance, result_cid))
 
         return filtered_results
 
     def __len__(self) -> int:
         return len(self.index)
 
-    def random_smiles(self) -> str:
+    def random_smiles_cid(self) -> Tuple[str, str]:
         shard_idx = random.randint(0, len(self.shards) - 1)
         shard = self.shards[shard_idx]
-        row = random.randint(0, len(shard.smiles) - 1)
-        return str(shard.smiles[row])
+        #row = random.randint(0, len(shard.smiles) - 1)
+        #return str(shard.smiles[row])
+        row = random.randint(0, len(shard.table["smiles"]) - 1)
+        return (str(shard.table["smiles"][row]), str(shard.table["cid"][row]))
 
 
 if __name__ == "__main__":

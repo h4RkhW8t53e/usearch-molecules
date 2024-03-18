@@ -28,40 +28,19 @@ class RawDataset:
     def smiles(self, row_idx: int) -> Optional[str]:
         return self.extractor(str(self.lines[row_idx]))
 
-    def smiles_slice(self, count_to_skip: int, max_count: int) -> List[Tuple[int, str]]:
+    def smiles_slice(self, count_to_skip: int, max_count: int) -> List[Tuple[int, str, str]]:
         result = []
         count_lines = len(self.lines)
         for row_idx in range(count_to_skip, count_lines):
-            smiles = self.smiles(row_idx)
-            if smiles:
-                result.append((row_idx, smiles))
+            smiles_cid = self.smiles(row_idx)
+            if smiles_cid:
+                smiles, cid = smiles_cid
+                result.append((row_idx, smiles, cid))
                 if len(result) >= max_count:
                     return result
 
         return result
 
-
-def pubchem_1(dir: os.PathLike) -> RawDataset:
-    """
-    gzip -d CID-SMILES.gz
-    """
-    file = Str(File(os.path.join(dir, "CID-SMILES")))
-    lines = file.splitlines()
-    
-    # Let's shuffle across all the files
-    #lines.shuffle(SEED)
-
-    def extractor(row: str) -> Optional[str]:
-        row = row.strip("\n")
-        if "," in row:
-            row = row.split(",")[-1]
-            return row
-        return None
-
-    return RawDataset(
-        lines=lines,
-        extractor=extractor,
-    )
     
 
 def pubchem(dir: os.PathLike) -> RawDataset:
@@ -69,13 +48,24 @@ def pubchem(dir: os.PathLike) -> RawDataset:
     gzip -d CID-SMILES.gz
     """
     
+    #file = Str(File(os.path.join(dir, "test_1k.smi"))) 
+    #lines = file.splitlines()
+    
+    
     filenames = [
         "Compound_001000001_001500000",
         "Compound_000500001_001000000",
         "Compound_001000001_001500000",
     ]
-    file = Str(File(os.path.join(dir, "Compound_001000001_001500000.smi"))) 
-    lines = file.splitlines()
+    lines = Strs()
+    for filename in filenames:
+        filename = filename + ".smi"
+        logger.info(f"Loading dataset: {filename}")
+        file = Str(File(os.path.join(dir, filename))) #Str(str(File(os.path.join(dir, filename)))) #
+        logger.info(f"Loaded dataset: {filename}")
+        file_lines: Strs = file.splitlines()
+        lines.extend(file_lines)
+        logger.info(f"Added {len(file_lines):,} molecules, reaching {len(lines):,}")
     
     # Let's shuffle across all the files
     #lines.shuffle(SEED)
@@ -83,7 +73,7 @@ def pubchem(dir: os.PathLike) -> RawDataset:
     def extractor(row: str) -> Optional[str]:
         row = row.strip("\n")
         if " " in row:
-            row = row.split(" ")[0]
+            row = row.split(" ") #row.split(" ")[0]
             return row
         return None
 
@@ -113,8 +103,8 @@ def export_parquet_shard(dataset: RawDataset, dir: os.PathLike, shard_index: int
 
             try:
                 dicts, dicts_cid = [], []
-                for _, smiles in rows_and_smiles:
-                    cid = "111111"
+                for _, smiles, cid in rows_and_smiles:
+                    #cid = "111111"
                     try:
                         dicts.append({"smiles": smiles})
                         dicts_cid.append(cid)
@@ -128,6 +118,7 @@ def export_parquet_shard(dataset: RawDataset, dir: os.PathLike, shard_index: int
                 schema_cid = pa.field("cid", pa.string(), nullable=False) 
                 table = table.append_column(schema_cid, dicts_cid)
                 write_table(table, path_out)
+                
 
             except KeyboardInterrupt as e:
                 raise e

@@ -37,6 +37,8 @@ def augment_with_rdkit(parquet_path: os.PathLike):
             fingers = pa.array(fingers, type=pa.uint16())
             rdkit_list.append(fingers)  
             
+    #print("Tab: ", table["smiles"][0], " ", table["cid"][0])
+    
     rdkit_list = pa.array(rdkit_list, pa.list_(pa.uint16())) 
     rdkit_field = pa.field("rdkit", pa.list_(pa.uint16()), nullable=False) 
     table = table.append_column(rdkit_field, rdkit_list)
