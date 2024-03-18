@@ -18,7 +18,7 @@ from dataset import write_table
 logger = logging.getLogger(__name__)
     
     
-def augment_with_rdkit(parquet_path: os.PathLike):
+def augment_with_mol2vec(parquet_path: os.PathLike):
     meta = pq.read_metadata(parquet_path)
     column_names: List[str] = meta.schema.names
     if "rdkit" in column_names: return
@@ -54,7 +54,7 @@ def augment_parquets_shard(parquet_dir: os.PathLike,):
         for file_idx in range(shard_index, files_count, shards_count):
             try:
                 filename = filenames[file_idx]
-                augment_with_rdkit(os.path.join(parquet_dir, filename))
+                augment_with_mol2vec(os.path.join(parquet_dir, filename))
                 logger.info( "Augmented shard {}. Process # {} / {}".format(filename, shard_index, shards_count))
             except KeyboardInterrupt as e:
                 raise e

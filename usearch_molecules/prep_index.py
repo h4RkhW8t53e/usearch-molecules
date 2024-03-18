@@ -22,7 +22,7 @@ def mono_index_mol2vec(dataset: FingerprintedDataset):
     index_path_rdkit = os.path.join(dataset.dir, "index-mol2vec.usearch")
     os.makedirs(os.path.join(dataset.dir), exist_ok=True)
 
-    index_mol2vec = Index(ndim=16, dtype='f32', metric='l2sq')
+    index_mol2vec = Index(ndim=300, dtype='f32', metric='l2sq')
 
     try:
         for shard_idx, shard in enumerate(dataset.shards):
