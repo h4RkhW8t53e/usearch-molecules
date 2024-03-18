@@ -125,14 +125,6 @@ class FingerprintedDataset:
     def __len__(self) -> int:
         return len(self.index)
 
-    def random_smiles_cid(self) -> Tuple[str, str]:
-        shard_idx = random.randint(0, len(self.shards) - 1)
-        shard = self.shards[shard_idx]
-        #row = random.randint(0, len(shard.smiles) - 1)
-        #return str(shard.smiles[row])
-        row = random.randint(0, len(shard.table["smiles"]) - 1)
-        return (str(shard.table["smiles"][row]), str(shard.table["cid"][row]))
-
 
 if __name__ == "__main__":
     dataset = FingerprintedDataset.open("data/pubchem")

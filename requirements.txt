@@ -8,3 +8,5 @@ jpype1 # For Chemistry Development Kit, written in Java
 
 streamlit
 streamlit-ketcher
+
+mol2vec @ git+https://github.com/samoturk/mol2vec

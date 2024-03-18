@@ -28,19 +28,19 @@ def augment_with_rdkit(parquet_path: os.PathLike):
     rdkit_list = []
     for smiles in table["smiles"]:
         try:
-            fingers = smiles_to_rdkit(str(smiles))
-            fingers = pa.array(fingers, type=pa.uint16())
+            fingers = smiles_to_mol2vec(str(smiles))
+            fingers = pa.array(fingers, type=pa.float32())
             #print(type(fingers))
             rdkit_list.append(fingers) 
         except Exception:
-            fingers = np.zeros(16, dtype=np.uint16)
-            fingers = pa.array(fingers, type=pa.uint16())
+            fingers = np.zeros(300, dtype=np.float32)
+            fingers = pa.array(fingers, type=pa.float32())
             rdkit_list.append(fingers)  
             
     #print("Tab: ", table["smiles"][0], " ", table["cid"][0])
     
-    rdkit_list = pa.array(rdkit_list, pa.list_(pa.uint16())) 
-    rdkit_field = pa.field("rdkit", pa.list_(pa.uint16()), nullable=False) 
+    mol2vec_list = pa.array(mol2vec_list, pa.list_(pa.float32())) 
+    mol2vec_field = pa.field("mol2vec", pa.list_(pa.float32()), nullable=False) 
     table = table.append_column(rdkit_field, rdkit_list)
     write_table(table, parquet_path)
 

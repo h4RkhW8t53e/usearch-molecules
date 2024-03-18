@@ -48,24 +48,8 @@ def pubchem(dir: os.PathLike) -> RawDataset:
     gzip -d CID-SMILES.gz
     """
     
-    #file = Str(File(os.path.join(dir, "test_1k.smi"))) 
-    #lines = file.splitlines()
-    
-    
-    filenames = [
-        "Compound_001000001_001500000",
-        "Compound_000500001_001000000",
-        "Compound_001000001_001500000",
-    ]
-    lines = Strs()
-    for filename in filenames:
-        filename = filename + ".smi"
-        logger.info(f"Loading dataset: {filename}")
-        file = Str(File(os.path.join(dir, filename))) #Str(str(File(os.path.join(dir, filename)))) #
-        logger.info(f"Loaded dataset: {filename}")
-        file_lines: Strs = file.splitlines()
-        lines.extend(file_lines)
-        logger.info(f"Added {len(file_lines):,} molecules, reaching {len(lines):,}")
+    file = Str(File(os.path.join(dir, "test_1k.smi"))) 
+    lines = file.splitlines()
     
     # Let's shuffle across all the files
     #lines.shuffle(SEED)
@@ -104,7 +88,6 @@ def export_parquet_shard(dataset: RawDataset, dir: os.PathLike, shard_index: int
             try:
                 dicts, dicts_cid = [], []
                 for _, smiles, cid in rows_and_smiles:
-                    #cid = "111111"
                     try:
                         dicts.append({"smiles": smiles})
                         dicts_cid.append(cid)
